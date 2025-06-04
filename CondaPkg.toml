@@ -1,13 +1,6 @@
+# Use system Python packages instead of conda environment
 [deps]
-h5py = ""
-pyscf = ""
-numpy = ""
-sympy = ""
+# Comment out dependencies that will be available in system Python
 
 [pip.deps]
-cirq = "==1.2"
-cirq-ft = "==1.2"
-openfermion = ""
-openfermionpyscf = ""
-TensorFox = ""
-module_sdstate = "==0.1.1"
+# These will use the pre-installed packages in /opt/venv
