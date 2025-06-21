@@ -6,6 +6,11 @@ services:
     image: quantummambo:latest
     container_name: quantummambo-dev
     volumes:
+      # Mount the entire source directory for live development
+      - ./src:/app/src
+      - ./L1.jl:/app/L1.jl
+      - ./LCU.jl:/app/LCU.jl
+      - ./pyMAMBO.py:/app/pyMAMBO.py
       # Mount the SAVED directory to persist results
       - ./SAVED:/app/SAVED
       # Mount a results directory for output
@@ -24,6 +29,11 @@ services:
       dockerfile: Dockerfile
     image: quantummambo:latest
     volumes:
+      # Mount source code for live development
+      - ./src:/app/src
+      - ./L1.jl:/app/L1.jl
+      - ./LCU.jl:/app/LCU.jl
+      - ./pyMAMBO.py:/app/pyMAMBO.py
       - ./SAVED:/app/SAVED
       - ./results:/app/results
     working_dir: /app
@@ -39,6 +49,11 @@ services:
     image: quantummambo:sysimage
     container_name: quantummambo-fast
     volumes:
+      # Mount source code for live development
+      - ./src:/app/src
+      - ./L1.jl:/app/L1.jl
+      - ./LCU.jl:/app/LCU.jl
+      - ./pyMAMBO.py:/app/pyMAMBO.py
       - ./SAVED:/app/SAVED
       - ./results:/app/results
     working_dir: /app
@@ -53,6 +68,11 @@ services:
       dockerfile: Dockerfile.sysimage
     image: quantummambo:sysimage
     volumes:
+      # Mount source code for live development
+      - ./src:/app/src
+      - ./L1.jl:/app/L1.jl
+      - ./LCU.jl:/app/LCU.jl
+      - ./pyMAMBO.py:/app/pyMAMBO.py
       - ./SAVED:/app/SAVED
       - ./results:/app/results
     working_dir: /app
@@ -66,6 +86,11 @@ services:
       dockerfile: Dockerfile.sysimage
     image: quantummambo:sysimage
     volumes:
+      # Mount source code for live development
+      - ./src:/app/src
+      - ./L1.jl:/app/L1.jl
+      - ./LCU.jl:/app/LCU.jl
+      - ./pyMAMBO.py:/app/pyMAMBO.py
       - ./SAVED:/app/SAVED
       - ./results:/app/results
     working_dir: /app

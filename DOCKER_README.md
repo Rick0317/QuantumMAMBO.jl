@@ -101,13 +101,77 @@ cp /host/my_script.jl ./
 julia --sysimage QuantumMAMBO.so --project=. my_script.jl
 ```
 
-## Performance Comparison
+## 🚀 Live Development (No Rebuild Required!)
+
+The Docker setup now includes **live volume mounting** for all source code. This means you can edit your code locally and see changes immediately in the container without rebuilding!
+
+### How It Works
+
+The docker-compose.yml automatically mounts:
+- `./src/` → `/app/src/` (all Julia source code)
+- `./L1.jl` → `/app/L1.jl` (main analysis script)
+- `./LCU.jl` → `/app/LCU.jl` (LCU analysis script)
+- `./pyMAMBO.py` → `/app/pyMAMBO.py` (Python utilities)
+
+### Live Development Workflow
+
+```bash
+# 1. Start the development container (one-time)
+docker compose run --rm quantummambo-fast
+
+# 2. In another terminal, edit your code locally
+# Edit src/QuantumMAMBO.jl, L1.jl, etc.
+
+# 3. Changes are immediately available in the container!
+# No rebuild needed - just restart your Julia session
+```
+
+### Example: Modify and Test
+
+```bash
+# Terminal 1: Start container
+docker compose run --rm quantummambo-fast
+
+# Terminal 2: Edit code
+echo 'println("Hello from modified code!")' >> L1.jl
+
+# Terminal 1: Test changes immediately
+julia> include("L1.jl")  # Changes are live!
+```
+
+### Development Tips
+
+1. **Use the interactive container** for development:
+   ```bash
+   docker compose run --rm quantummambo-fast
+   ```
+
+2. **Edit locally, run in container**:
+   - Edit files in your local editor (VS Code, etc.)
+   - Changes are instantly available in the container
+
+3. **For Julia package changes**:
+   ```julia
+   # In container, after editing src/ files:
+   using Pkg
+   Pkg.develop(PackageSpec(path="."))  # Reload package
+   using QuantumMAMBO  # Fresh load
+   ```
+
+4. **For Python changes**:
+   ```bash
+   # Python changes in pyMAMBO.py are immediately available
+   python3 pyMAMBO.py
+   ```
+
+### Performance Comparison
 
 | Method | Startup Time | Build Time | Best For |
 |--------|-------------|------------|----------|
 | Standard Docker | 2-5 minutes | 10 minutes | Testing |
 | System Image | **10-30 seconds** | 20-30 minutes | **Production** |
 | Local Julia | Variable | N/A | Development |
+| **Live Development** | **10-30 seconds** | **One-time** | **Development** |
 
 ## Directory Structure
 
@@ -189,4 +253,4 @@ This is especially valuable for QuantumMAMBO because:
 3. **Develop interactively**: `docker compose run --rm quantummambo-fast`
 4. **Scale to your molecules**: Add data to `SAVED/` directory
 
-The one-time build investment pays off immediately with 10-50x faster startup times! 
+The one-time build investment pays off immediately with 10-50x faster startup times!
