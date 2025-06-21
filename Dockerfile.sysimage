@@ -1,0 +1,171 @@
+# Multi-stage build for creating optimized QuantumMAMBO system image
+FROM julia:1.10 as builder
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV JULIA_PROJECT=/app
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    python3-venv \
+    build-essential \
+    gfortran \
+    libopenblas-dev \
+    liblapack-dev \
+    libhdf5-dev \
+    pkg-config \
+    cmake \
+    git \
+    wget \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a Python virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip and install Python dependencies
+RUN pip install --upgrade pip setuptools wheel
+
+# Install Python scientific computing stack
+RUN pip install \
+    numpy \
+    scipy \
+    sympy \
+    h5py \
+    pyscf \
+    openfermion \
+    openfermionpyscf \
+    cirq==1.2 \
+    cirq-ft==1.2 \
+    TensorFox \
+    module_sdstate==0.1.1
+
+WORKDIR /app
+
+# Copy project files
+COPY Project.toml .
+COPY Manifest.toml* .
+COPY src/ src/
+COPY test/ test/
+COPY SAVED/ SAVED/
+COPY *.jl .
+COPY README.md .
+COPY LICENSE .
+
+# Set up Python environment
+ENV PYTHON=/opt/venv/bin/python
+ENV PYTHONPATH=/opt/venv/lib/python3.11/site-packages
+ENV CONDAPKG_EXE=""
+ENV CONDAPKG_BACKEND="Null"
+ENV JULIA_PYTHONCALL_EXE=/opt/venv/bin/python
+
+# Create minimal CondaPkg.toml
+RUN echo '[deps]' > CondaPkg.toml && \
+    echo '[pip.deps]' >> CondaPkg.toml
+
+# Install Julia dependencies + PackageCompiler
+RUN julia --project=. -e "using Pkg; Pkg.instantiate(); Pkg.add(\"PackageCompiler\"); Pkg.precompile()"
+
+# Test QuantumMAMBO loads
+RUN julia --project=. -e "using QuantumMAMBO; println(\"QuantumMAMBO loaded for sysimage creation\")"
+
+# Create comprehensive precompilation script
+RUN echo 'using QuantumMAMBO' > precompile_script.jl && \
+    echo 'using LinearAlgebra, SparseArrays, HDF5, Optim, JuMP' >> precompile_script.jl && \
+    echo '' >> precompile_script.jl && \
+    echo 'println("Precompiling QuantumMAMBO functions...")' >> precompile_script.jl && \
+    echo '' >> precompile_script.jl && \
+    echo 'try' >> precompile_script.jl && \
+    echo '    # Basic operations' >> precompile_script.jl && \
+    echo '    H = QuantumMAMBO.PAULI_L1([1,2], [1.0,1.0], [1,1], [1,1], [1.0,1.0])' >> precompile_script.jl && \
+    echo '    println("✓ Basic Hamiltonian operations")' >> precompile_script.jl && \
+    echo '    ' >> precompile_script.jl && \
+    echo '    # Load LiH if available' >> precompile_script.jl && \
+    echo '    if isfile("SAVED/lih.h5")' >> precompile_script.jl && \
+    echo '        println("Loading LiH molecule...")' >> precompile_script.jl && \
+    echo '        filename = "SAVED/lih"' >> precompile_script.jl && \
+    echo '        H, η = QuantumMAMBO.SAVELOAD_HAM("lih", filename)' >> precompile_script.jl && \
+    echo '        ' >> precompile_script.jl && \
+    echo '        # Run key operations to compile them' >> precompile_script.jl && \
+    echo '        QuantumMAMBO.RUN_L1(H, η=η, DO_CSA=false, DO_DF=true, DO_ΔE=false,' >> precompile_script.jl && \
+    echo '                           DO_AC=true, DO_OO=false, DO_THC=false, DO_SQRT=false,' >> precompile_script.jl && \
+    echo '                           DO_TROTTER=false, DO_MHC=false, DO_MTD_CP4=false,' >> precompile_script.jl && \
+    echo '                           COUNT=false, verbose=false, FOCK_BOUND=true)' >> precompile_script.jl && \
+    echo '        println("✓ Core L1 calculations compiled")' >> precompile_script.jl && \
+    echo '    end' >> precompile_script.jl && \
+    echo '    ' >> precompile_script.jl && \
+    echo '    println("✓ All QuantumMAMBO functions precompiled successfully")' >> precompile_script.jl && \
+    echo 'catch e' >> precompile_script.jl && \
+    echo '    println("Warning during precompilation: ", e)' >> precompile_script.jl && \
+    echo 'end' >> precompile_script.jl
+
+# Create the system image with comprehensive precompilation
+RUN julia --project=. -e \
+    "using PackageCompiler; \
+    packages = [\"QuantumMAMBO\", \"LinearAlgebra\", \"SparseArrays\", \"HDF5\", \"Optim\", \"JuMP\", \"PythonCall\"]; \
+    create_sysimage(packages, \
+                    sysimage_path=\"QuantumMAMBO.so\", \
+                    precompile_execution_file=\"precompile_script.jl\", \
+                    project=\".\"); \
+    println(\"System image created successfully!\")"
+
+# Production stage with system image
+FROM julia:1.10
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV JULIA_PROJECT=/app
+ENV PYTHONUNBUFFERED=1
+
+# Install minimal runtime dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    libopenblas-dev \
+    liblapack-dev \
+    libhdf5-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Python environment and system image from builder
+COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /app /app
+
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHON=/opt/venv/bin/python
+ENV PYTHONPATH=/opt/venv/lib/python3.11/site-packages
+ENV CONDAPKG_EXE=""
+ENV CONDAPKG_BACKEND="Null"
+ENV JULIA_PYTHONCALL_EXE=/opt/venv/bin/python
+
+# Create optimized run scripts
+RUN echo '#!/bin/bash' > /usr/local/bin/run_mambo_fast.sh && \
+    echo 'export PYTHON=/opt/venv/bin/python' >> /usr/local/bin/run_mambo_fast.sh && \
+    echo 'export PYTHONPATH=/opt/venv/lib/python3.11/site-packages' >> /usr/local/bin/run_mambo_fast.sh && \
+    echo 'export CONDAPKG_EXE=""' >> /usr/local/bin/run_mambo_fast.sh && \
+    echo 'export CONDAPKG_BACKEND="Null"' >> /usr/local/bin/run_mambo_fast.sh && \
+    echo 'export JULIA_PYTHONCALL_EXE=/opt/venv/bin/python' >> /usr/local/bin/run_mambo_fast.sh && \
+    echo 'cd /app' >> /usr/local/bin/run_mambo_fast.sh && \
+    echo 'julia --sysimage QuantumMAMBO.so --project=. L1.jl "$@"' >> /usr/local/bin/run_mambo_fast.sh && \
+    chmod +x /usr/local/bin/run_mambo_fast.sh
+
+RUN echo '#!/bin/bash' > /usr/local/bin/run_lcu_fast.sh && \
+    echo 'export PYTHON=/opt/venv/bin/python' >> /usr/local/bin/run_lcu_fast.sh && \
+    echo 'export PYTHONPATH=/opt/venv/lib/python3.11/site-packages' >> /usr/local/bin/run_lcu_fast.sh && \
+    echo 'export CONDAPKG_EXE=""' >> /usr/local/bin/run_lcu_fast.sh && \
+    echo 'export CONDAPKG_BACKEND="Null"' >> /usr/local/bin/run_lcu_fast.sh && \
+    echo 'export JULIA_PYTHONCALL_EXE=/opt/venv/bin/python' >> /usr/local/bin/run_lcu_fast.sh && \
+    echo 'cd /app' >> /usr/local/bin/run_lcu_fast.sh && \
+    echo 'julia --sysimage QuantumMAMBO.so --project=. LCU.jl "$@"' >> /usr/local/bin/run_lcu_fast.sh && \
+    chmod +x /usr/local/bin/run_lcu_fast.sh
+
+# Default command using system image for instant startup
+CMD ["julia", "--sysimage", "QuantumMAMBO.so", "--project=.", "-e", "using QuantumMAMBO; println(\"⚡ QuantumMAMBO ready instantly with system image!\")"]
+
+EXPOSE 8888 
